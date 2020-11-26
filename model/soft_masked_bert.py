@@ -15,32 +15,30 @@ class SoftMaskedBert(nn.Module):
     """
     def __init__(self, bert, tokenizer, hidden, layer_n, device):
         super(SoftMaskedBert, self).__init__()
-        self.bert = bert
-        self.tokenizer = tokenizer
+        # self.bert = bert
+        # self.tokenizer = tokenizer
         self.embedding = bert.embeddings.to(device)
         self.config = bert.config
-        self.embedding_size = self.config.to_dict()['hidden_size']
+        embedding_size = self.config.to_dict()['hidden_size']
 
-        self.detector = BiGRU(self.embedding_size, hidden, layer_n)
+        self.detector = BiGRU(embedding_size, hidden, layer_n)
         self.corrector = bert.encoder
         mask_token_id = torch.tensor([[tokenizer.mask_token_id]]).to(device)
         self.mask_e = self.embedding(mask_token_id)
-        self.linear = nn.Linear(self.embedding_size, self.config.vocab_size)
+        self.linear = nn.Linear(embedding_size, self.config.vocab_size)
         self.softmax = nn.LogSoftmax(dim=-1)
 
-    def forward(self, input_ids):
-        # device = input_ids.device
-        # self.mask_e = self.mask_e.to(device)
-        e = self.embedding(input_ids)
+    def forward(self, input_ids, input_mask, segment_ids):
+        e = self.embedding(input_ids=input_ids, token_type_ids=segment_ids)
         p = self.detector(e)
         e_ = p * self.mask_e + (1-p) * e
         _, _, _, _, \
-        extended_attention_mask, \
+        _, \
         head_mask, \
         encoder_hidden_states, \
-        encoder_extended_attention_mask= self._init_inputs(input_ids)
+        encoder_extended_attention_mask= self._init_inputs(input_ids, input_mask)
         h = self.corrector(e_,
-                           attention_mask=extended_attention_mask,
+                           attention_mask=encoder_extended_attention_mask,
                            head_mask=head_mask,
                            encoder_hidden_states=encoder_hidden_states,
                            encoder_attention_mask=encoder_extended_attention_mask)
@@ -156,16 +154,16 @@ class SoftMaskedBert(nn.Module):
                extended_attention_mask, head_mask, encoder_hidden_states, encoder_extended_attention_mask
 
 
-if __name__ == "__main__":
-    config = BertConfig.from_pretrained('../data/chinese_wwm_pytorch/bert_config.json')
-    tokenizer = BertTokenizer.from_pretrained('../data/chinese_wwm_pytorch/vocab.txt')
-    bert = BertModel.from_pretrained('../data/chinese_wwm_pytorch/pytorch_model.bin', config=config)
-    model = SoftMaskedBert(bert, tokenizer, 2, 1)
-    text = '中国的'
-    token = tokenizer.tokenize(text)
-    ids = tokenizer.convert_tokens_to_ids(token)
-    ids = torch.Tensor([ids]).long()
-    print(ids)
-    out = model(ids)
-    # out = bert(ids)
-    print(out)
+# if __name__ == "__main__":
+#     config = BertConfig.from_pretrained('../data/chinese_wwm_pytorch/bert_config.json')
+#     tokenizer = BertTokenizer.from_pretrained('../data/chinese_wwm_pytorch/vocab.txt')
+#     bert = BertModel.from_pretrained('../data/chinese_wwm_pytorch/pytorch_model.bin', config=config)
+#     model = SoftMaskedBert(bert, tokenizer, 2, 1)
+#     text = '中国的'
+#     token = tokenizer.tokenize(text)
+#     ids = tokenizer.convert_tokens_to_ids(token)
+#     ids = torch.Tensor([ids]).long()
+#     print(ids)
+#     out = model(ids)
+#     # out = bert(ids)
+#     print(out)
